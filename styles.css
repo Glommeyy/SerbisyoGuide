@@ -1,0 +1,19 @@
+:root {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body { margin: 0; }
+nav a:hover { color: #0f766e; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid #0d9488; outline-offset: 5px; }
+button:disabled, fieldset:disabled label { cursor: not-allowed; }
+.panel { padding: 28px; border: 1px solid #e2e8f0; border-radius: 16px; background: white; }
+.step-number { display: flex; flex: 0 0 32px; height: 32px; align-items: center; justify-content: center; border-radius: 50%; background: white; color: #0f766e; font-size: 14px; font-weight: 700; }
+.status-label { padding: 4px 10px; border-radius: 999px; background: #f1f5f9; color: #64748b; font-size: 11px; font-weight: 600; }
+.service-option { display: flex; align-items: flex-start; gap: 8px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 14px; color: #64748b; }
+.service-option input { margin-top: 4px; }
+.skip-link { position: absolute; top: -80px; left: 16px; padding: 12px 16px; z-index: 10; background: white; color: #0f766e; }
+.skip-link:focus { top: 12px; }
+@media (max-width: 640px) { .panel { padding: 22px; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
