@@ -1,5 +1,6 @@
 'use strict';
-const services = window.SERVICE_DATA;
+const services = window.Catalog.snapshot().published;
+const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[char]));
 const $ = id => document.getElementById(id);
 const STORAGE_KEY = 'serbisyoGuide.checklist.v1';
 let selectedService = null;
@@ -33,14 +34,18 @@ function persist() {
     $('save-status').textContent = 'Storage unavailable · progress lasts for this visit only';
   }
 }
+function searchableServiceText(service) {
+  const reminders = service.purposes.flatMap(purpose => ['yes','no'].flatMap(firstTime => getRequirements(service, {purpose,firstTime,category:'minor',representative:'proxy'})));
+  return `${service.name} ${service.description} ${service.purposes.join(' ')} ${service.requirements.map(r => r.text + ' ' + r.note).join(' ')} ${reminders.map(r => r.text + ' ' + r.note).join(' ')} ${service.steps.join(' ')}`.toLowerCase();
+}
 function renderServices() {
   $('service-grid').replaceChildren();
   const query = $('service-search').value.trim().toLowerCase();
-  const matches = services.filter(s => `${s.name} ${s.description} ${s.purposes.join(' ')}`.toLowerCase().includes(query));
+  const matches = services.filter(s => searchableServiceText(s).includes(query));
   for (const service of matches) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'service-card';
     button.setAttribute('aria-pressed', String(selectedService?.id === service.id));
-    button.innerHTML = `<span class="service-icon" aria-hidden="true">${service.icon}</span><span class="card-category">${service.category}</span><h3>${service.name}</h3><p>${service.description}</p><span class="card-link">Check requirements <span aria-hidden="true">→</span></span>`;
+    button.innerHTML = `<span class="service-icon" aria-hidden="true">${escapeHTML(service.icon)}</span><span class="card-category">${escapeHTML(service.category)}</span><h3>${escapeHTML(service.name)}</h3><p>${escapeHTML(service.description)}</p><span class="card-link">Check requirements <span aria-hidden="true">→</span></span>`;
     button.addEventListener('click', () => selectService(service, true));
     $('service-grid').append(button);
   }
@@ -76,17 +81,17 @@ function renderChecklist() {
     const span = document.createElement('span'); const title = document.createElement('strong'); title.textContent = item.text;
     const note = document.createElement('small'); note.textContent = item.note;
     span.append(title,note); label.append(input,span); $('checklist-items').append(label);
-    input.addEventListener('change', () => { saved.checked = input.checked ? [...new Set([...saved.checked,item.id])] : saved.checked.filter(id => id !== item.id); updateProgress(); persist(); });
+    input.addEventListener('change', () => { saved.checked = input.checked ? [...new Set([...saved.checked,item.id])] : saved.checked.filter(id => id !== item.id); updateProgress(); applyChecklistFilter(); persist(); });
   }
   $('instructions-title').textContent = `${service.name}: sample transaction steps`;
   $('instructions-list').replaceChildren(...service.steps.map(text => { const li = document.createElement('li'); li.textContent = text; return li; }));
-  updateProgress();
+  updateProgress(); applyChecklistFilter();
 }
 function updateProgress() {
   const items = getRequirements(services.find(s => s.id === saved.serviceId), saved.answers);
   const done = items.filter(item => saved.checked.includes(item.id)).length;
   const percentage = Math.round(done / items.length * 100);
-  $('progress-text').textContent = `${done} of ${items.length} prepared`;
+  $('progress-text').textContent = `${done} of ${items.length} prepared · ${items.length - done} missing`;
   $('progress-percent').textContent = `${percentage}%`;
   $('progress-bar').value = percentage;
   $('completion-message').hidden = done !== items.length;
@@ -102,7 +107,7 @@ $('question-form').addEventListener('submit', event => {
   const answers = Object.fromEntries(new FormData(event.target));
   if (!selectedService || !validAnswers(selectedService,answers)) return;
   const same = saved?.serviceId === selectedService.id && Object.keys(answers).every(key => saved.answers[key] === answers[key]);
-  saved = { version:1, serviceId:selectedService.id, answers, checked:same ? saved.checked : [] };
+  saved = { version:1, serviceId:selectedService.id, revision:selectedService.revision || null, answers, checked:same ? saved.checked : [] };
   renderChecklist(); persist(); $('checklist').scrollIntoView({behavior:'smooth'}); $('result-title').focus({preventScroll:true});
   notify('Your checklist is ready. Tick items as you prepare.');
 });
@@ -127,10 +132,25 @@ try {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (raw) {
     const parsed = JSON.parse(raw); const service = services.find(s => s.id === parsed?.serviceId);
-    if (parsed.version === 1 && service && validAnswers(service,parsed.answers) && Array.isArray(parsed.checked) && parsed.checked.every(id => typeof id === 'string')) {
+    if (parsed?.version === 1 && service && (parsed.revision || null) === (service.revision || null) && validAnswers(service,parsed.answers) && Array.isArray(parsed.checked) && parsed.checked.every(id => typeof id === 'string')) {
       saved = parsed; saved.checked = [...new Set(saved.checked)].filter(id => getRequirements(service,saved.answers).some(item => item.id === id));
       selectService(service,false,saved.answers); $('save-status').textContent = '✓ Saved checklist restored from this device';
-    } else { $('save-status').textContent = 'Previous checklist could not be restored. Create a new one.'; }
+    } else { $('save-status').textContent = 'The service or saved answers changed. Generate a fresh checklist to use current requirements.'; }
   }
 } catch { $('save-status').textContent = 'Saved data unavailable · you can still create a checklist'; }
 renderServices(); renderChecklist();
+
+function applyChecklistFilter() {
+  const mode = $('checklist-filter').value;
+  const labels = [...$('checklist-items').children];
+  for (const label of labels) {
+    const checked = label.querySelector('input').checked;
+    label.hidden = mode === 'missing' ? checked : mode === 'prepared' ? !checked : false;
+  }
+  $('filter-empty').hidden = labels.some(label => !label.hidden);
+}
+$('checklist-filter').addEventListener('change', applyChecklistFilter);
+if (Catalog.error) { $('catalog-notice').textContent = Catalog.error; $('catalog-notice').hidden = false; }
+window.addEventListener('storage', event => { if(event.key === Catalog.key || event.key === null) location.reload(); });
+window.addEventListener('beforeprint', () => { for (const label of $('checklist-items').children) label.hidden = false; $('filter-empty').hidden = true; });
+window.addEventListener('afterprint', applyChecklistFilter);
